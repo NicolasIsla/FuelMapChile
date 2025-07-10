@@ -62,47 +62,55 @@ def download_and_process(tile, start_date, end_date, base_path, user, password):
     if os.path.exists(identifier_folder) and any(f.endswith(".jp2") for f in os.listdir(identifier_folder)):
         print(f"Skipping {identifier}, already processed.")
         return
-
-    os.makedirs(identifier_folder, exist_ok=True)
-    token = get_keycloak(user, password)
-    session = requests.Session()
-    session.headers.update({"Authorization": f"Bearer {token}"})
-    url = f"https://catalogue.dataspace.copernicus.eu/odata/v1/Products({file_id})/$value"
-    r = session.get(url, allow_redirects=False)
-    while r.status_code in (301, 302, 303, 307):
-        url = r.headers["Location"]
+    try:
+        os.makedirs(identifier_folder, exist_ok=True)
+        token = get_keycloak(user, password)
+        session = requests.Session()
+        session.headers.update({"Authorization": f"Bearer {token}"})
+        url = f"https://catalogue.dataspace.copernicus.eu/odata/v1/Products({file_id})/$value"
         r = session.get(url, allow_redirects=False)
-    r = session.get(url, stream=True)
-    with open(zip_path, "wb") as f:
-        for chunk in r.iter_content(chunk_size=1024 * 1024):
-            if chunk:
-                f.write(chunk)
+        while r.status_code in (301, 302, 303, 307):
+            url = r.headers["Location"]
+            r = session.get(url, allow_redirects=False)
+        r = session.get(url, stream=True)
+        with open(zip_path, "wb") as f:
+            for chunk in r.iter_content(chunk_size=1024 * 1024):
+                if chunk:
+                    f.write(chunk)
 
-    temp_path = os.path.join(identifier_folder, "temp_extract")
-    with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-        zip_ref.extractall(temp_path)
-    os.remove(zip_path)
+        temp_path = os.path.join(identifier_folder, "temp_extract")
+        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+            zip_ref.extractall(temp_path)
+        os.remove(zip_path)
 
-    safe_dirs = [d for d in os.listdir(temp_path) if d.endswith(".SAFE")]
-    if not safe_dirs:
-        print("❌ No .SAFE folder found.")
-        return
+        safe_dirs = [d for d in os.listdir(temp_path) if d.endswith(".SAFE")]
+        if not safe_dirs:
+            print("❌ No .SAFE folder found.")
+            return
 
-    safe_path = os.path.join(temp_path, safe_dirs[0])
-    granule_folder = os.path.join(safe_path, "GRANULE", os.listdir(os.path.join(safe_path, "GRANULE"))[0], "IMG_DATA")
+        safe_path = os.path.join(temp_path, safe_dirs[0])
+        granule_folder = os.path.join(safe_path, "GRANULE", os.listdir(os.path.join(safe_path, "GRANULE"))[0], "IMG_DATA")
 
-    for r, b_list, scale in [("R10m", bands_10m, 1), ("R20m", bands_20m, 2), ("R60m", bands_60m, 6)]:
-        res_path = os.path.join(granule_folder, r)
-        if os.path.exists(res_path):
-            for b in b_list:
-                for f in glob.glob(os.path.join(res_path, f"*{b}_{r[-3:]}.jp2")):
-                    name = os.path.basename(f).replace(f"_{r[-3:]}", "_10m") if scale > 1 else os.path.basename(f)
-                    dst = os.path.join(identifier_folder, name)
-                    if scale == 1:
-                        shutil.copy2(f, dst)
-                    else:
-                        rescale_and_copy(f, dst, scale)
-    shutil.rmtree(temp_path, ignore_errors=True)
+        for r, b_list, scale in [("R10m", bands_10m, 1), ("R20m", bands_20m, 2), ("R60m", bands_60m, 6)]:
+            res_path = os.path.join(granule_folder, r)
+            if os.path.exists(res_path):
+                for b in b_list:
+                    for f in glob.glob(os.path.join(res_path, f"*{b}_{r[-3:]}.jp2")):
+                        name = os.path.basename(f).replace(f"_{r[-3:]}", "_10m") if scale > 1 else os.path.basename(f)
+                        dst = os.path.join(identifier_folder, name)
+                        if scale == 1:
+                            shutil.copy2(f, dst)
+                        else:
+                            rescale_and_copy(f, dst, scale)
+        shutil.rmtree(temp_path, ignore_errors=True)
+    except Exception as e:
+        print(f"❌ Error procesando {identifier}: {e}")
+        # Renombrar carpeta con sufijo _error_fecha
+        error_folder = identifier_folder + f"_{date_str}_error"
+        if os.path.exists(identifier_folder):
+            os.rename(identifier_folder, error_folder)
+        else:
+            os.makedirs(error_folder)
 
 @hydra.main(version_base=None, config_path="../../configs/download", config_name="sentinel2")
 def main(cfg: DictConfig):

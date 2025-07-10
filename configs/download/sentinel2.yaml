@@ -3,7 +3,7 @@ start_date: "2020-09-01"
 end_date: "2021-09-01"
 
 n: 60
-base_path: "data/processed"
+base_path: "D:/datos/fuelmap/raw"
 user: "nicolas.isla@ug.uchile.cl"
 password: "??"
 
