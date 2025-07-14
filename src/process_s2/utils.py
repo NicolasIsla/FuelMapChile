@@ -292,8 +292,8 @@ def which_patch(id:str):
     ]
     patchesxtile = (array_size//256 + 1)**2
 
-    tile_name = tiles[id//(10**4)]
-    patch_n = id%(10**4)
+    tile_name = tiles[id//(10**5)]
+    patch_n = id%(10**5)
     print(f"El id {id} está asocidado al patch {patch_n} del tile {tile_name}.")
     return tile_name, patch_n
 
